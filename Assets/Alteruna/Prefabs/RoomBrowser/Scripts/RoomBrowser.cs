@@ -21,7 +21,6 @@ namespace Alteruna
 			Password
 		}
 
-
 		public UnityEvent OnRowsSorted { get; set; } = new UnityEvent();
 
 		[Tooltip("Time in seconds to wait before allowing a player to refresh the room list. Should be fairly high to save data usage.")]

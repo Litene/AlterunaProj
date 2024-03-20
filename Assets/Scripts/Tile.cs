@@ -1,9 +1,10 @@
 ﻿using System;
 using System.Collections.Generic;
+using Alteruna;
 using UnityEngine;
 using Utility;
 [RequireComponent(typeof(SpriteRenderer))]
-public class Tile : MonoBehaviour {
+public class Tile : AttributesSync {
 
 	private bool _hasBomb;
 	public bool HasBomb {

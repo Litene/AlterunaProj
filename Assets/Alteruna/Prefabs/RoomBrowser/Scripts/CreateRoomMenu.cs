@@ -154,6 +154,7 @@ namespace Alteruna
 
 		public void Submit()
 		{
+			Debug.Log("yo we do be clicking create");
 			if (Multiplayer.InRoom)
 			{
 				StatusPopup.Instance.TriggerStatus("Invalid action!\nAlready in a room!");
@@ -188,8 +189,10 @@ namespace Alteruna
 			// Serialize custom info into a string and pass it as the name of the room.
 			string roomInfo = Writer.SerializeAndPackString(_customRoomInfo);
 
-			if (!_toggleHideRoom.isOn)
+			if (!_toggleHideRoom.isOn) {
+				
 				Multiplayer.CreateRoom(roomInfo, _toggleHideRoom.isOn, password, true, true, (ushort)maxPlayers);
+			}
 			else
 				Multiplayer.CreatePrivateRoom(_customRoomInfo.RoomName, (ushort)MaxPlayers, true, true);
 		}
