@@ -30,8 +30,7 @@ public class Tile : MonoBehaviour, IConvertable {
 			IsRevealed = (int)_currentState > (int)TileState.Hidden && (int)_currentState < (int)TileState.Flag;
 			
 			if (_currentState == TileState.HiddenWithBomb) HasBomb = true;
-			//else if (_currentState is not (TileState.HiddenWithBomb or TileState.Bomb or TileState.Flag)) HasBomb = false; // I can see it here...
-			
+
 			IsFlagged = _currentState is TileState.Flag;
 		}
 	}
