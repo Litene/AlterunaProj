@@ -8,262 +8,304 @@ using UnityEngine;
 using UnityEngine.InputSystem;
 using Random = UnityEngine.Random;
 using Alteruna;
+using Unity.Collections;
 using UnityEngine.Events;
+using Avatar = Alteruna.Avatar;
 
 
 // MVC splitt?
 public class MineGrid : AttributesSync, PlayerInputActionsMap.IPlayerControllInputActions {
-    private Vector2Int _boardSize; // maybe serialize this to let the player chose?
-    public bool GameIsStarted;
-    public bool GameIsOver; //used for debugging
-    private Tile[,] _board;
-    [SynchronizableField] private int yo = 1;
-    private const int NumberOfBombs = 20;
-    [SerializeField] private GameObject _tilePrefab;
-    [SerializeField] private Multiplayer _multiplayer;
 
-    [SerializeField] private PlayerInputActionsMap _map;
+	private Vector2Int _boardSize; // maybe serialize this to let the player chose?
+	[SynchronizableField] public bool GameIsStarted;
+	public bool GameIsOver; //used for debugging
+	private ConvertableMatrix<Tile> _board;
+	private const int NumberOfBombs = 20;
+	[SerializeField] private GameObject _tilePrefab;
+	[SerializeField] private Multiplayer _multiplayer;
 
-    [SerializeField] private GameObject _youWonObject;
-    [SerializeField] private GameObject _youLostObject;
-    [SerializeField] private Spawner _spawner;
-    public UnityAction<Multiplayer, Endpoint> _spawnEvent;
-    
-    // private void OnValidate() =>
-    //     _board = _boardSize != Vector2.zero
-    //         ? new Tile[_boardSize.x, _boardSize.y]
-    //         : new Tile[Helper.DefaultBoardSizeX, Helper.DefaultBoardSizeY];
+	[SerializeField] private PlayerInputActionsMap _map;
+	[SerializeField] private GameObject _youWonObject;
+	[SerializeField] private GameObject _youLostObject;
 
 
-    public void GenerateGrid() {
-
-        if (yo == 1) {
-            Debug.Log(yo);
-            yo = 10;
-        }
-        else {
-            Debug.Log(yo);
-        }
-        
-        //board ??= new Tile[Helper.DefaultBoardSizeX, Helper.DefaultBoardSizeY];
-        if (_board is null) {
-            _board = new Tile[Helper.DefaultBoardSizeX, Helper.DefaultBoardSizeY];
-        }
-        else {
-            foreach (var tile in _board) {
-                Debug.Log(_board.Length);
-                var tempTile = _spawner.Spawn(0, tile.GetWorldPos, Quaternion.identity).GetComponentInChildren<Tile>();
-                tempTile.Initialize(WorldToGridPosition(tile.GetWorldPos), this);
-                return;
-            }
-        }
-
-        GameIsOver = false; // should be moved to reset
-
-        for (var y = 0; y < Helper.DefaultBoardSizeY; y++)
-        for (var x = 0; x < Helper.DefaultBoardSizeX; x++) {
-            var tile = _board[x, y] = _spawner.Spawn(0, Vector3.zero, Quaternion.identity).GetComponentInChildren<Tile>();
-            //Instantiate(_tilePrefab, Vector3.zero, quaternion.identity).GetComponentInChildren<Tile>();
-            Debug.Log(tile);
-            tile.Initialize(new Vector2Int(x, y), this);
-            tile.gameObject.transform.parent.position = tile.GetWorldPos;
-        }
-
-        //PlaceBombs();
-    }
-
-    private void CheckWinState() {
-        var numberToComplete = _board.Length - NumberOfBombs;
-
-        var currentRevealedCount = _board.Cast<Tile>().Count(tile => tile.IsRevealed);
-
-        if (currentRevealedCount != numberToComplete) return;
-
-        GameIsOver = true;
-        _youWonObject.SetActive(true);
-        
-    }
-
-    // private void Awake() {
-    //     _spawnEvent += StartingTheGame();
-    //     _multiplayer.OnConnected.AddListener(_spawnEvent);
-    // }
+	public void GenerateGrid() {
 
 
-    // public void OnConnectedToServer() {
-    //     Debug.Log("YO");
-    //     _map ??= new PlayerInputActionsMap();
-    //     _map.PlayerControllInput.SetCallbacks(this);
-    //     _map.PlayerControllInput.Enable();
-    //     _youWonObject.SetActive(false);
-    //     _youLostObject.SetActive(false);
-    //     GenerateGrid();
-    // }
+		_board ??= GenerateLocalBoard(); // this doesn't work...
 
-    // private  void  OnEnable() { // hides alteruna thingys
-    // }
+		GameIsOver = false; // should be moved to reset
+		
+		for (var y = 0; y < Helper.DefaultBoardSizeY; y++)
+			for (var x = 0; x < Helper.DefaultBoardSizeX; x++) {
+				var tile = _board[x, y] = Instantiate(_tilePrefab, Vector3.zero, Quaternion.identity).GetComponent<Tile>();
+				//Instantiate(_tilePrefab, Vector3.zero, quaternion.identity).GetComponentInChildren<Tile>();
+				tile.Initialize(new Vector2Int(x, y), this);
+				tile.gameObject.transform.position = tile.GetWorldPos;
+			
+			}
+		
 
-    private void Start() {
-        _map ??= new PlayerInputActionsMap();
-        _map.PlayerControllInput.SetCallbacks(this);
-        _map.PlayerControllInput.Enable();
-        _youWonObject.SetActive(false);
-        _youLostObject.SetActive(false);
-        GenerateGrid();
-    }
+		BroadcastRemoteMethod( "UpdateBoard", _board.GetStringBoard, true); // this gets called from both to both?
+		//PlaceBombs();
+	}
 
-    // public UnityAction<Multiplayer, Endpoint> StartingTheGame() {
-    // 	_map ??= new PlayerInputActionsMap();
-    // 	_map.PlayerControllInput.SetCallbacks(this);
-    // 	_map.PlayerControllInput.Enable();
-    //     _youWonObject.SetActive(false);
-    //     _youLostObject.SetActive(false);
-    //     GenerateGrid();
-    //     return null;
-    // }
+	[SynchronizableMethod] public void UpdateBoard(string[] board, bool update) { // wanted to take it in as a simpler form of data
+                                                                                      //but couldn't pass a matrix or an array longer than 1
+		
+		_board ??= GenerateLocalBoard();
 
-    private void OnDisable() {
-        _map.PlayerControllInput.Disable();
-    }
+		foreach (string state in board) {
+			int x = int.Parse(state.Substring(0,2));
+			int y = int.Parse(state.Substring(2, 2));
+			
+			int targetState = int.Parse(state.Substring(4,2));
+			GetTile(new Vector2Int(x, y)).CurrentState = ((TileState)targetState);
+		}
 
-    // private void Start() {
-    // 	_map ??= new PlayerInputActionsMap();
-    // 	_map.Enable();
-    // }
+		CheckWinState();
+		
+		// for (int y = 0; y < Helper.DefaultBoardSizeY; y++) {
+		// 	for (int x = 0; x < Helper.DefaultBoardSizeX; x++) {
+		// 		GetTile(new Vector2Int(x, y)).UpdateTile((boardState.CastConvertableMatrix[x, y].TileSpriteState);
+		// 	}
+		// }
+	}
 
-    public void StartGame(Vector3 clickPosition) {
-        PlaceBombs(clickPosition);
-        foreach (var tile in _board) {
-            tile.AddNeighbors();
-        }
-    }
+	private ConvertableMatrix<Tile> GenerateLocalBoard() {
+		var tempBoard = new ConvertableMatrix<Tile>(Helper.DefaultBoardSizeX, Helper.DefaultBoardSizeY);
+		for (int y = 0; y < Helper.DefaultBoardSizeY; y++) {
+			for (int x = 0; x < Helper.DefaultBoardSizeX; x++) {
+				var tile = tempBoard[x, y] = Instantiate(_tilePrefab, Vector3.zero, Quaternion.identity).GetComponent<Tile>();
+				//Instantiate(_tilePrefab, Vector3.zero, quaternion.identity).GetComponentInChildren<Tile>();
+				tile.Initialize(new Vector2Int(x, y), this);
+				tile.gameObject.transform.position = tile.GetWorldPos;
+			}
+		}
 
-    public void ClearGird() {
-        foreach (var tile in _board) Destroy(tile.gameObject);
-    }
+		return tempBoard;
+	}
 
-    private void PlaceBombs(Vector3 initialClickPos) {
-        foreach (var position in GenerateBombPositions(WorldToGridPosition(initialClickPos))) {
-            GetTile(position).HasBomb = true;
-        }
-    }
+	private void CheckWinState() {
+		var numberToComplete = _board.Length - NumberOfBombs;
 
-    private List<Vector2Int> GenerateBombPositions(Vector2Int initialClickPosition) {
-        var bombPositions = new List<Vector2Int>();
-        var safePositions = new HashSet<Vector2Int>();
+		var currentRevealedCount = _board.Count(tile => tile.IsRevealed);
 
-        AddSafePositions(initialClickPosition, safePositions);
+		if (currentRevealedCount != numberToComplete) return;
 
-        int numBombsToPlace = NumberOfBombs;
+		GameIsOver = true;
+		_youWonObject.SetActive(true);
+	}
 
-        while (numBombsToPlace > 0) {
-            var position = new Vector2Int(Random.Range(0, Helper.DefaultBoardSizeX),
-                Random.Range(0, Helper.DefaultBoardSizeY));
-
-            if (bombPositions.Contains(position) || safePositions.Contains(position)) continue;
-
-            bombPositions.Add(position);
-            numBombsToPlace--;
-        }
-
-        return bombPositions;
-    }
-
-    private void AddSafePositions(Vector2Int initialClickPosition, ISet<Vector2Int> safePositions) {
-        safePositions.Add(initialClickPosition);
-
-        foreach (var direction in Helper.Directions) {
-            var neighborPosition = initialClickPosition + direction;
-            if (Helper.IsWithinBounds(neighborPosition)) safePositions.Add(neighborPosition);
-        }
-    }
-
-    public Tile GetTile(Vector2Int position) {
-        return !Helper.IsWithinBounds(position) ? null : _board[position.x, position.y];
-    }
-
-    // public Tile
-    // 	GetTileWorldPosition(Vector3 worldPosition) => //todo: fix this has a bug, does not consider the consider pixeloffset
-    // 	GetTile(new Vector2Int(Mathf.FloorToInt((worldPosition.x / Helper.TileSize) + worldPosition.x * Helper.PixelOffset),
-    // 		Mathf.FloorToInt((worldPosition.y / Helper.TileSize) + worldPosition.y * Helper.PixelOffset)));
-
-    private Vector2Int WorldToGridPosition(Vector3 worldPosition) => new(
-        Mathf.FloorToInt((worldPosition.x / Helper.TileSize)),
-        Mathf.FloorToInt((worldPosition.y / Helper.TileSize)));
-
-    public void OnLeftClick(InputAction.CallbackContext context) {
-        // this needs a good amount of cleaning
-        if (!context.performed) return;
+	// private void Awake() {
+	//     _spawnEvent += StartingTheGame();
+	//     _multiplayer.OnConnected.AddListener(_spawnEvent);
+	// }
 
 
-        if (GameIsOver) return;
+	public void OnConnectedToServer() {
+		Debug.Log(" we are connecting");
+		_map ??= new PlayerInputActionsMap();
+		_map.PlayerControllInput.SetCallbacks(this);
+		_map.PlayerControllInput.Enable();
+		_youWonObject.SetActive(false);
+		_youLostObject.SetActive(false);
 
-        var mousePosition = Mouse.current.position.ReadValue();
-        var mouseWorldPosition = Camera.main!.ScreenToWorldPoint(mousePosition);
+		foreach (var VARIABLE in _multiplayer.CurrentRoom.Users) {
+			
+		Debug.Log(VARIABLE);
+		}
+		// GenerateGrid();
+	}
 
-        if (!Helper.IsWithinBounds(WorldToGridPosition(mouseWorldPosition))) return;
 
-        var clickedTile = GetTile(WorldToGridPosition(mouseWorldPosition));
+	// private  void  OnEnable() { // hides alteruna thingys
+	// }
 
-        if (clickedTile.IsFlagged) return;
+	private void Start() {
+		_multiplayer.OnRoomJoined.AddListener(JoinedGame);
 
-        if (!GameIsStarted) {
-            StartGame(mouseWorldPosition);
-            GameIsStarted = true;
-        }
-        else {
-            if (clickedTile.HasBomb) {
-                foreach (var tile in _board) {
-                    if (tile != clickedTile && tile.HasBomb) tile.TileSpriteState = TileSpriteState.Bomb;
-                }
+		_youWonObject.SetActive(false);
+		_youLostObject.SetActive(false);
+		// _map ??= new PlayerInputActionsMap();
+		// _map.PlayerControllInput.SetCallbacks(this);
+		// _map.PlayerControllInput.Enable();
+		// _youWonObject.SetActive(false);
+		// _youLostObject.SetActive(false);
+		// GenerateGrid();
+	}
 
-                clickedTile.TileSpriteState = TileSpriteState.ExplodedBomb;
-                _youLostObject.SetActive(true);
-                GameIsOver = true;
-                return;
-            }
-        }
+	public void JoinedGame(Multiplayer player, Room room, User user) {
+		// Debug.Log(_avatar.IsMe);
+		// if (!_avatar || !_avatar.IsMe) return;
 
-        FloodFill(WorldToGridPosition(mouseWorldPosition));
+		_map ??= new PlayerInputActionsMap();
+		_map.PlayerControllInput.SetCallbacks(this);
+		_map.PlayerControllInput.Enable();
+	}
 
-        CheckWinState();
-    }
 
-    private void FloodFill(Vector2Int position) {
-        var tile = GetTile(position);
+	// public UnityAction<Multiplayer, Endpoint> StartingTheGame() {
+	// 	_map ??= new PlayerInputActionsMap();
+	// 	_map.PlayerControllInput.SetCallbacks(this);
+	// 	_map.PlayerControllInput.Enable();
+	//     _youWonObject.SetActive(false);
+	//     _youLostObject.SetActive(false);
+	//     GenerateGrid();
+	//     return null;
+	// }
 
-        if (tile.IsRevealed || tile.IsFlagged) return;
+	private void OnDisable() => _map?.PlayerControllInput.Disable();
 
-        tile.Reveal();
 
-        if (tile.TileSpriteState != TileSpriteState.Empty) return;
+	// private void Start() {
+	// 	_map ??= new PlayerInputActionsMap();
+	// 	_map.Enable();
+	// }
 
-        foreach (var direction in Helper.Directions) {
-            var neighborPosition = position + direction;
-            if (Helper.IsWithinBounds(neighborPosition)) {
-                FloodFill(neighborPosition);
-            }
-        }
-    }
+	public void StartGame(Vector3 clickPosition) {
+		PlaceBombs(clickPosition);
+		foreach (var tile in _board) {
+			tile.AddNeighbors();
+		}
+	}
 
-    public void OnRightClick(InputAction.CallbackContext context) {
-        if (!context.performed || GameIsOver) return;
+	public void ClearGird() {
+		foreach (var tile in _board) Destroy(tile.gameObject);
+	}
 
-        var mousePosition = Mouse.current.position.ReadValue();
-        var mouseWorldPosition = Camera.main!.ScreenToWorldPoint(mousePosition);
+	private void PlaceBombs(Vector3 initialClickPos) {
+		foreach (var bombTile in GenerateBombPositions(WorldToGridPosition(initialClickPos)).Select(GetTile)) {
+			bombTile.CurrentState = TileState.HiddenWithBomb;
+		}
+	}
 
-        GetTile(WorldToGridPosition(mouseWorldPosition)).ToggleFlag();
-    }
+	private List<Vector2Int> GenerateBombPositions(Vector2Int initialClickPosition) {
+		var bombPositions = new List<Vector2Int>();
+		var safePositions = new HashSet<Vector2Int>();
 
-    public void OnRestartAction(InputAction.CallbackContext context) {
-        if (!context.performed || !GameIsOver) return;
+		AddSafePositions(initialClickPosition, safePositions);
 
-        GameIsStarted = false;
-        if (_youLostObject.activeInHierarchy) _youLostObject.SetActive(false);
+		int numBombsToPlace = NumberOfBombs;
 
-        if (_youWonObject.activeInHierarchy) _youWonObject.SetActive(false);
+		while (numBombsToPlace > 0) {
+			var position = new Vector2Int(Random.Range(0, Helper.DefaultBoardSizeX),
+				Random.Range(0, Helper.DefaultBoardSizeY));
 
-        ClearGird();
-        GenerateGrid();
-    }
+			if (bombPositions.Contains(position) || safePositions.Contains(position)) continue;
+
+			bombPositions.Add(position);
+			numBombsToPlace--;
+		}
+
+		return bombPositions;
+	}
+
+	private void AddSafePositions(Vector2Int initialClickPosition, ISet<Vector2Int> safePositions) {
+		safePositions.Add(initialClickPosition);
+
+		foreach (var direction in Helper.Directions) {
+			var neighborPosition = initialClickPosition + direction;
+			if (Helper.IsWithinBounds(neighborPosition)) safePositions.Add(neighborPosition);
+		}
+	}
+
+	public Tile GetTile(Vector2Int position) {
+		return !Helper.IsWithinBounds(position) || _board is null ? null : _board[position.x, position.y];
+	}
+
+	// public Tile
+	// 	GetTileWorldPosition(Vector3 worldPosition) => //todo: fix this has a bug, does not consider the consider pixeloffset
+	// 	GetTile(new Vector2Int(Mathf.FloorToInt((worldPosition.x / Helper.TileSize) + worldPosition.x * Helper.PixelOffset),
+	// 		Mathf.FloorToInt((worldPosition.y / Helper.TileSize) + worldPosition.y * Helper.PixelOffset)));
+
+	private Vector2Int WorldToGridPosition(Vector3 worldPosition) => new(
+		Mathf.FloorToInt((worldPosition.x / Helper.TileSize)),
+		Mathf.FloorToInt((worldPosition.y / Helper.TileSize)));
+
+	public void OnLeftClick(InputAction.CallbackContext context) { // simplyfly
+		// this needs a good amount of cleaning
+		if (!context.performed) return;
+
+		if (GameIsOver) return;
+
+		//_multiplayer.CurrentRoom.Users
+		
+		var mousePosition = Mouse.current.position.ReadValue();
+		var mouseWorldPosition = Camera.main!.ScreenToWorldPoint(mousePosition);
+
+		if (!Helper.IsWithinBounds(WorldToGridPosition(mouseWorldPosition))) return;
+
+		var clickedTile = GetTile(WorldToGridPosition(mouseWorldPosition));
+
+		if (clickedTile.IsFlagged) return;
+
+		if (!GameIsStarted) {
+			StartGame(mouseWorldPosition);
+			GameIsStarted = true;
+		}
+		else {
+			if (clickedTile.HasBomb) {
+				foreach (var tile in _board) {
+					if (tile != clickedTile && tile.HasBomb) tile.CurrentState = TileState.Bomb;
+				}
+
+				clickedTile.CurrentState = TileState.ExplodedBomb;
+				_youLostObject.SetActive(true);
+				GameIsOver = true;
+				BroadcastRemoteMethod( "UpdateBoard", _board.GetStringBoard, true);
+				return;
+			}
+		}
+
+		FloodFill(WorldToGridPosition(mouseWorldPosition));
+
+		CheckWinState(); // make more dynamic???
+		
+		BroadcastRemoteMethod( "UpdateBoard", _board.GetStringBoard, true);
+	}
+
+	private void FloodFill(Vector2Int position) {
+		var tile = GetTile(position);
+
+		if (tile.IsRevealed || tile.IsFlagged) return;
+
+		tile.Reveal();
+
+		if (tile.CurrentState != TileState.Revealed) return;
+
+		foreach (var direction in Helper.Directions) {
+			var neighborPosition = position + direction;
+			if (Helper.IsWithinBounds(neighborPosition)) {
+				FloodFill(neighborPosition);
+			}
+		}
+	}
+
+	public void OnRightClick(InputAction.CallbackContext context) {
+		if (!context.performed || GameIsOver) return;
+
+		var mousePosition = Mouse.current.position.ReadValue();
+		var mouseWorldPosition = Camera.main!.ScreenToWorldPoint(mousePosition);
+
+		if (!Helper.IsWithinBounds(WorldToGridPosition(mouseWorldPosition))) return;
+		
+		GetTile(WorldToGridPosition(mouseWorldPosition)).ToggleFlag();
+		
+		BroadcastRemoteMethod( "UpdateBoard", _board.GetStringBoard, true);
+	}
+
+	public void OnRestartAction(InputAction.CallbackContext context) {
+		if (!context.performed || !GameIsOver) return;
+
+		GameIsStarted = false;
+		if (_youLostObject.activeInHierarchy) _youLostObject.SetActive(false);
+
+		if (_youWonObject.activeInHierarchy) _youWonObject.SetActive(false);
+
+		ClearGird();
+		GenerateGrid();
+	}
+
+
 }
