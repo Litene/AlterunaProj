@@ -11,9 +11,9 @@ public class Tile : MonoBehaviour, IConvertable {
 	// All these three can be removed but I do believe they provide clarity. Same information is stores within the TileState enum
 	public bool HasBomb { get; private set; }
 	public bool IsFlagged { get; private set; }
-	public bool IsRevealed { get; private set; }
+	[field: SerializeField]public bool IsRevealed { get; private set; }
 
-	private TileState _currentState = TileState.Flag;
+	[SerializeField] private TileState _currentState = TileState.Flag;
 
 	/// <summary>
 	/// Set the current state of the tile, also changes the sprite accordingly.
@@ -29,11 +29,13 @@ public class Tile : MonoBehaviour, IConvertable {
 
 			IsRevealed = (int)_currentState > (int)TileState.Hidden && (int)_currentState < (int)TileState.Flag;
 			
-			if (_currentState == TileState.HiddenWithBomb) HasBomb = true;
+			if (_currentState is (TileState.HiddenWithBomb or TileState.Bomb)) HasBomb = true;
 
 			IsFlagged = _currentState is TileState.Flag;
 		}
 	}
+
+	
 
 	#endregion
 
@@ -121,7 +123,9 @@ public class Tile : MonoBehaviour, IConvertable {
 		// Initial State
 		CurrentState = TileState.Hidden;
 	}
+
 	
+
 	#endregion
 
 	#region public methods
@@ -145,7 +149,8 @@ public class Tile : MonoBehaviour, IConvertable {
 	/// <summary>
 	/// Counts neighboring bombs and sets a private variable used by reveal.
 	/// </summary>
-	public void AddNeighbors() {
+	public void AddNeighbors() { // this is called more than necsarry, can be prevented with a single bool
+		_neighboringBombs = 0; // don't like this option
 		foreach (var pos in Helper.Directions)
 			if (_grid.GetTile(_position + pos) != null && _grid.GetTile(_position + pos).HasBomb)
 				_neighboringBombs++;
